@@ -18,7 +18,7 @@ class Dataset():
 
     def __getitem__(self, i): return self.x[i], self.y[i]
 
-def loss_and_accuracy(model=model, xb=xb, yb=yb):
+def loss_and_accuracy(model, xb, yb):
     return loss_func(model(xb), yb), accuracy(model(xb),yb)
 
 from torch.utils.data import DataLoader, SequentialSampler, RandomSampler

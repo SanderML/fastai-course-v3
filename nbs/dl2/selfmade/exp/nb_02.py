@@ -12,25 +12,30 @@ def x_to_tensor(listed):
 def y_to_tensor(listed):
     return tensor(array(listed))
 
+def normalize(x, m, s): return (x-m)/s
+
 def get_data():
     mnist = DataBlock(blocks=(ImageBlock(cls=PILImageBW), CategoryBlock),
-                     get_items = get_image_files,
-                     splitter = GrandparentSplitter('training', 'testing'),
-                     get_y = parent_label)
+                 get_items = get_image_files,
+                 splitter = GrandparentSplitter('training', 'testing'),
+                 get_y = parent_label)
     dls = mnist.dataloaders(untar_data(URLs.MNIST))
+    x_train, y_train = zip(*dls.train_ds)
+    x_valid, y_valid = zip(*dls.valid_ds)
 
-    x_train, y_train, x_valid, y_valid = [], [], [], []
+    x_train = tensor(list(map(array, x_train)), dtype=torch.float32).view(len(dls.train_ds), -1)
+    x_valid = tensor(list(map(array, x_valid)), dtype=torch.float32).view(len(dls.valid_ds), -1)
+    y_train = tensor(y_train)
+    y_valid = tensor(y_valid)
 
-    for elem in dls.train_ds:
-        x_train.append(elem[0])
-        y_train.append(elem[1])
-    for elem in dls.valid_ds:
-        x_valid.append(elem[0])
-        y_valid.append(elem[1])
+    x_mean = x_train.mean()
+    x_std = x_train.std()
+    x_train, x_valid = normalize(x_train, x_mean, x_std), normalize(x_valid, x_mean, x_std)
+    x_train, x_valid = x_train / 255.0, x_valid / 255.0
 
-    return x_to_tensor(x_train), y_to_tensor(y_train), x_to_tensor(x_valid), y_to_tensor(y_valid)
+    return x_train, y_train, x_valid, y_valid
 
-def normalize(x, m, s): return (x-m)/s
+
 
 def test_near_zero(a, tol=1e-3): assert a.abs() < tol, f'Not Near zero: {a}'
 
