@@ -41,6 +41,11 @@ def flatten(x): return x.view(x.shape[0], -1)
 
 def mnist_resize(x): return x.view(-1, 1, 28, 28)
 
+class CudaCallback(Callback):
+    def __init__(self): pass
+    def begin_fit(self): self.model = self.model.cuda()
+    def begin_batch(self): self.run.xb, self.run.yb = self.run.xb.cuda(), self.run.yb.cuda()
+
 class BatchTransformXCallback(Callback):
     _order = 2
     def __init__(self, tfm): self.tfm = tfm
@@ -105,3 +110,38 @@ class Hooks(ListContainer):
 
     def remove(self):
         for  h in self: h.remove()
+
+def get_cnn_layers(data, nfs, layers, **kwargs):
+    nfs = [1] + nfs
+    return [layers(nfs[i], nfs[i+1], 5 if i == 0 else 3) for i in range(len(nfs) - 1)] + [nn.AdaptiveAvgPool2d(1), Lambda(flatten), nn.Linear(nfs[-1], data.c)]
+
+def conv_layer(ni, nf, ks=3, stride=2, **kwargs):
+    return nn.Sequential(
+        nn.Conv2d(ni, nf, ks, stride=stride, padding=ks//2), GeneralRelu(**kwargs)
+    )
+
+def get_cnn_model(data, nfs, layers, **kwargs):
+    return nn.Sequential(*get_cnn_layers(data, nfs, layers, **kwargs))
+
+class GeneralRelu(nn.Module):
+    def __init__(self, leak=None, sub=None, maxv=None):
+        super().__init__()
+        self.leak, self.sub, self.maxv = leak, sub, maxv
+
+    def forward(self, x):
+        x = F.leaky_relu(x, self.leak) if self.leak is not None else F.relu(x)
+        if self.sub is not None: x.sub_(self.sub)
+        if self.maxv is not None: x.clamp_max_(self.maxv)
+        return x
+
+def init_cnn(model, uniform=False):
+    f = init.kaiming_uniform_ if uniform else init.kaiming_normal_
+    for l in model:
+        if isinstance(l, nn.Sequential):
+            f(l[0].weight, a=0.1)
+            l[0].bias.data.zero_()
+
+def get_learn_run(nfs, data, lr, layer, cbs=None, opt_func=None, uniform=False, **kwargs):
+    model = get_cnn_model(data, nfs, layer, **kwargs)
+    init_cnn(model, uniform=uniform)
+    return get_runner(model, data, lr=lr, cbs=cbs, opt_func=opt_func)
