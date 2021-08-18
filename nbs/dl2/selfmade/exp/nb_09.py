@@ -25,7 +25,7 @@ class Recorder(Callback):
     def plot_loss(self): plt.plot(self.losses)
 
     def plot(self, skip_last=0):
-        losses = [o.item() for o in losses]
+        losses = [o.item() for o in self.losses]
         n = len(losses) - skip_last
         plt.xscale('log')
         plt.plot(self.lrs[:n], losses[:n])
@@ -135,7 +135,7 @@ class AverageGrad(Stat):
     def init_state(self, p): return {'grad_avg': torch.zeros_like(p.grad.data)}
     def update(self, p, state, mom, **kwargs):
         state['mom_damp'] =  1 - mom if self.dampening else 1.
-        state['grad_avg'].mul_(mom).add_(state['mom_damp'], p.grad.data)
+        state['grad_avg'].mul_(mom).add_(p.grad.data, alpha=state['mom_damp'])
         return state
 
 class AverageSqrGrad(Stat):
@@ -145,7 +145,7 @@ class AverageSqrGrad(Stat):
     def init_state(self, p): return {'sqr_avg': torch.zeros_like(p.grad.data)}
     def update(self, p, state, sqr_mom, **kwargs):
         state['sqr_damp'] = 1 - sqr_mom if self.dampening else 1.
-        state['sqr_avg'].mul_(sqr_mom).addcmul_(state['sqr_damp'], p.grad.data, p.grad.data)
+        state['sqr_avg'].mul_(sqr_mom).addcmul_(p.grad.data, p.grad.data, value=state['sqr_damp'])
         return state
 
 class StepCount(Stat):
@@ -159,7 +159,7 @@ def debias(mom, damp, step): return damp * (1 - mom**step) / (1 - mom)
 def adam_step(p, lr, mom, mom_damp, sqr_mom, sqr_damp, step, grad_avg, sqr_avg, eps, **kwargs):
     debias1 = debias(mom, mom_damp, step)
     debias2 = debias(sqr_mom, sqr_damp, step)
-    p.data.addcdiv_(-lr / debias1, grad_avg, (sqr_avg / debias2).sqrt() + eps)
+    p.data.addcdiv_(grad_avg, (sqr_avg / debias2).sqrt() + eps, value=-lr / debias1)
     return p
 adam_step._defaults = dict(eps=1e-5)
 
